@@ -2,36 +2,30 @@ const express = require('express');
 const app = express();
 const port = 3000;
 const bodyParser = require('body-parser');
-const mongoose = require("mongoose");
 const session = require('express-session');
-const Mongostore = require('connect-mongo')(session);
 const router = require('./routes/router');
+const { sequelize } = require('./sequelize');
+const Store = require('connect-session-sequelize')(session.Store);
 
 
-mongoose.Promise = global.Promise;
-mongoose.connect("mongodb://localhost:27017/nodelogin", { useNewUrlParser: true });
-const db = mongoose.connection;
-
-db.on('error', console.error.bind(console, 'connection error'));
-db.once('open', function () {
-  console.log('connected');
-});
 app.use(session({
   secret: 'agatha christie',
   resave: true,
   saveUninitialized: false,
-  store: new Mongostore({
-    mongooseConnection: db
+  store: new Store({
+    db: sequelize
   })
 }));
 
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({ extended: false }));
 
+app.use('/', router);
+
 
 // app.use(express.static(__dirname + '/src'));
 
-app.use('/', router);
+
 
 // basic error handling
 app.use((req, res, next) => {

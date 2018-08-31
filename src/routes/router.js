@@ -1,8 +1,8 @@
 const express = require('express');
-const router = express.Router();
-const User = require('../models/user')
+const { User } = require('../sequelize');
 const path = require('path');
-
+const bcrypt = require('bcrypt');
+const router = express.Router();
 
 router.get('/', (req, res, next) => {
   return res.sendFile(path.join(__dirname + '/../index.html'));
@@ -10,7 +10,8 @@ router.get('/', (req, res, next) => {
 
 router.post('/', (req, res, next) => {
 
-  // check if password re-entered match
+
+  //check if password re-entered matches
   if (req.body.password !== req.body.passwordConf) {
     const err = new Error('Passwords do not match');
     err.status = 400;
@@ -24,31 +25,42 @@ router.post('/', (req, res, next) => {
       email: req.body.email,
       username: req.body.username,
       password: req.body.password,
-      passwordConf: req.body.passwordConf
+      passwordconf: req.body.passwordConf
     };
 
-    User.create(userData, (err, user) => {
-      if (err) {
-        return next(err);
-      } else {
-        req.session.userId = user._id;
+    User.create(userData).then(
+      (user) => {
+
+        req.session.userId = user.id;
         return res.redirect('/profile');
       }
+    ).catch(err => {
+      res.send(err.message);
     });
   }
   else if (req.body.logemail && req.body.logpassword) {
-    //login
-    User.authenticate(req.body.logemail, req.body.logpassword, (err, user) => {
-      if (err || !user) {
-        const err = new Error('wrong credentials');
-        err.status = 401;
-        return next(err);
-      } else {
-        req.session.userId = user._id;
-        // res.send('it worked');
-        return res.redirect('/profile');
-      }
-    })
+
+    // authenticate  user credentials on login
+
+    User.findAll({ where: { email: req.body.logemail } })
+      .then((user) => {
+        bcrypt.compare(req.body.logpassword, user[0].password)
+          .then(result => {
+            if (result === true) {
+              req.session.userId = user[0].id;
+              res.redirect('/profile');
+            } else {
+              const error = new Error('Password incorrect');
+              res.send(error);
+            }
+          }).catch(err => {
+            res.send(err);
+          })
+
+      }).catch(err => {
+        const error = new Error('User not found');
+        error.status = err.status;
+      })
 
   } else {
     const err = new Error('All fields are mandatory');
@@ -57,23 +69,22 @@ router.post('/', (req, res, next) => {
   }
 });
 
-// profile 
+//profile 
 router.get('/profile', function (req, res, next) {
-  console.log('here');
-  User.findById(req.session.userId)
-    .exec((err, user) => {
-      if (err) {
-        return next(err);
+  User.findOne({ where: { id: req.session.userId } })
+    .then(user => {
+      if (user === null) {
+        const err = new Error('Unauthorized');
+        err.status = 400;
+        res.send(err);
       } else {
-        if (user === null) {
-          var err = new Error('Unauthorized');
-          err.status = 400;
-          return next(err);
-        } else {
-          return res.send('<h1>Name: </h1>' + user.username + '<h2>Mail: </h2>' + user.email + '<br><a type="button" href="/logout">Logout</a>')
-        }
+        return res.send('<h1>Name: </h1>' + user.username + '<h2>Mail: </h2>' + user.email + '<br><a type="button" href="/logout">Logout</a>');
       }
-    });
+
+    })
+    .catch(err => {
+      res.send(err.message);
+    })
 });
 
 //logout
